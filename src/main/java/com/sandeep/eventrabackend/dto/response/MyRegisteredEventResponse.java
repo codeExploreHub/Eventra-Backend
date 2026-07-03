@@ -40,6 +40,10 @@ public class MyRegisteredEventResponse {
     @Schema(description = "Registration status.", example = "CONFIRMED")
     private String status;
 
+    @Schema(description = "URL to the event's banner or thumbnail image",
+            example = "https://example.com/images/event-banner.jpg")
+    private String imageUrl;
+
     @JsonProperty("date")
     @Schema(description = "Event date alias for frontend clients.", example = "2026-08-15")
     public LocalDate getDate() {

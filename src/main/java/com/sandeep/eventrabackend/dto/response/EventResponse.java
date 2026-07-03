@@ -40,4 +40,7 @@ public class EventResponse {
     @JsonProperty("public")
     @Schema(description = "Whether the event is publicly visible", example = "true")
     private boolean isPublic;
+
+    @Schema(description = "URL to the event's banner or thumbnail image", example = "https://example.com/images/event-banner.jpg")
+    private String imageUrl;
 }

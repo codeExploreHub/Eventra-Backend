@@ -20,6 +20,13 @@ public class Event {
     private boolean isPublic = true;
 
     /**
+     * Optional URL pointing to the event's banner/thumbnail image.
+     * Only external links are supported (no file uploads).
+     */
+    @Column(length = 2048)
+    private String imageUrl;
+
+    /**
      * Maximum number of attendees allowed. Null means unlimited.
      */
     private Integer capacity;
@@ -91,4 +98,7 @@ public class Event {
 
     public Set<User> getAttendees() { return attendees; }
     public void setAttendees(Set<User> attendees) { this.attendees = attendees; }
+
+    public String getImageUrl() { return imageUrl; }
+    public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
 }

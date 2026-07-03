@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.validator.constraints.URL;
 
 import java.time.LocalDateTime;
 
@@ -39,4 +40,9 @@ public class EventCreateRequest {
 
     @Schema(description = "Whether the event is publicly visible", defaultValue = "true")
     private Boolean isPublic;
+
+    @URL(message = "Image URL must be a valid URL")
+    @Schema(description = "Optional URL to the event's banner or thumbnail image (link only)",
+            example = "https://example.com/images/event-banner.jpg")
+    private String imageUrl;
 }

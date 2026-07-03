@@ -160,6 +160,7 @@ public class EventService {
         event.setLocation(request.getLocation());
         event.setEventDate(request.getEventDate());
         event.setCapacity(request.getCapacity());
+        event.setImageUrl(request.getImageUrl());
 
         // Default to true if isPublic is null
         event.setPublic(request.getIsPublic() == null || request.getIsPublic());
@@ -198,6 +199,7 @@ public class EventService {
         event.setEventDate(request.getEventDate());
         event.setCapacity(request.getCapacity());
         event.setPublic(request.getIsPublic() == null || request.getIsPublic());
+        event.setImageUrl(request.getImageUrl());
 
         Event saved = eventRepository.save(event);
         return toEventResponse(saved);
@@ -340,6 +342,7 @@ public class EventService {
                 .eventDate(event.getEventDate())
                 .registeredAt(registration.getRegisteredAt())
                 .status(registration.getStatus())
+                .imageUrl(event.getImageUrl())
                 .build();
     }
 
@@ -353,6 +356,7 @@ public class EventService {
                 .capacity(event.getCapacity())
                 .registeredCount(event.getRegisteredCount())
                 .isPublic(event.isPublic())
+                .imageUrl(event.getImageUrl())
                 .build();
     }
 }
