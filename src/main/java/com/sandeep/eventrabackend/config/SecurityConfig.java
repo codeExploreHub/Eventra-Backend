@@ -136,6 +136,8 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/hackathons/{id}").permitAll()
                         // ── Public: Project categories endpoint ──────────────
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/projects/categories").permitAll()
+                        // ── Admin Panel — ADMIN / SUPER_ADMIN only ────────
+                        .requestMatchers("/api/admin/**").hasAnyAuthority("ADMIN", "SUPER_ADMIN")
                         // ── Public: Swagger / OpenAPI ────────────────────
                         .requestMatchers(
                                 "/swagger-ui.html",
