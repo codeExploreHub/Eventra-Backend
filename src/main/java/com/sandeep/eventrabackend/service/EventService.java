@@ -65,8 +65,6 @@ public class EventService {
         this.userRepository = userRepository;
     }
 
-    // ── Issue #2101 — Event Availability Check ───────────────────────────────
-
     /**
      * Returns availability data for the given event.
      * The endpoint is public (no JWT required) so anyone can check spots.
@@ -268,7 +266,6 @@ public class EventService {
                 "Registration could not be completed due to high demand. Please try again.");
     }
 
-    // ── Private Helpers ──────────────────────────────────────────────────────
 
     private RegistrationResponse executeRegistration(
             Long eventId,
