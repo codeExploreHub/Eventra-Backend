@@ -3,6 +3,8 @@ package com.sandeep.eventrabackend.controller;
 import com.sandeep.eventrabackend.dto.request.LoginRequest;
 import com.sandeep.eventrabackend.dto.request.SignupRequest;
 import com.sandeep.eventrabackend.dto.request.GoogleAuthRequest;
+import com.sandeep.eventrabackend.dto.request.ForgotPasswordRequest;
+import com.sandeep.eventrabackend.dto.request.ResetPasswordRequest;
 import com.sandeep.eventrabackend.dto.response.AuthResponse;
 import com.sandeep.eventrabackend.dto.response.ErrorResponse;
 import com.sandeep.eventrabackend.service.AuthService;
@@ -164,5 +166,52 @@ public ResponseEntity<AuthResponse> googleLogin(
             return ResponseEntity.ok("Logged out successfully");
         }
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token format");
+    }
+
+    // ─── FORGOT PASSWORD ────────────────────────────────────────────────────────
+
+    @PostMapping("/forgot-password")
+    @SecurityRequirements
+    @Operation(
+            summary = "Request a password reset link",
+            description = """
+                    Sends a password reset link to the provided email if an account exists.
+                    
+                    For security, this endpoint always returns a success response,
+                    regardless of whether the email is registered.
+                    """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Request processed"),
+            @ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "429", description = "Rate limit exceeded",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<String> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.forgotPassword(request);
+        return ResponseEntity.ok("If an account with that email exists, a reset link has been sent.");
+    }
+
+    // ─── RESET PASSWORD ─────────────────────────────────────────────────────────
+
+    @PostMapping("/reset-password")
+    @SecurityRequirements
+    @Operation(
+            summary = "Reset password using a valid token",
+            description = """
+                    Resets the user's password using the token sent via email.
+                    
+                    Token expires 15 minutes after being issued.
+                    """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Password reset successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid/expired token or passwords don't match",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<String> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok("Password has been reset successfully.");
     }
 }

@@ -1,5 +1,11 @@
 package com.sandeep.eventrabackend.service;
 
+import com.sandeep.eventrabackend.dto.request.ForgotPasswordRequest;
+import com.sandeep.eventrabackend.dto.request.ResetPasswordRequest;
+import com.sandeep.eventrabackend.exception.InvalidTokenException;
+import com.sandeep.eventrabackend.model.PasswordResetToken;
+import com.sandeep.eventrabackend.repository.PasswordResetTokenRepository;
+import java.time.LocalDateTime;
 import com.sandeep.eventrabackend.dto.request.LoginRequest;
 import com.sandeep.eventrabackend.dto.request.SignupRequest;
 import com.sandeep.eventrabackend.dto.response.AuthResponse;
@@ -29,13 +35,17 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final GoogleAuthService googleAuthService;
     private final TokenBlacklistService tokenBlacklistService;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final EmailService emailService;
 
     public AuthService(UserRepository userRepository,
                    PasswordEncoder passwordEncoder,
                    AuthenticationManager authenticationManager,
                    JwtTokenProvider jwtTokenProvider,
                    GoogleAuthService googleAuthService,
-                   TokenBlacklistService tokenBlacklistService) {
+                   TokenBlacklistService tokenBlacklistService,
+                   PasswordResetTokenRepository passwordResetTokenRepository,
+                   EmailService emailService) {
 
     this.userRepository = userRepository;
     this.passwordEncoder = passwordEncoder;
@@ -43,6 +53,8 @@ public class AuthService {
     this.jwtTokenProvider = jwtTokenProvider;
     this.googleAuthService = googleAuthService;
     this.tokenBlacklistService = tokenBlacklistService;
+    this.passwordResetTokenRepository = passwordResetTokenRepository;
+    this.emailService = emailService;
 }
 
     @Transactional
@@ -167,6 +179,53 @@ if (lastName == null || lastName.isBlank()) {
         tokenBlacklistService.addToBlacklist(token, expiration);
     }
 
+    @Transactional
+    public void forgotPassword(ForgotPasswordRequest request) {
+        User user = userRepository.findByEmail(request.getEmail().toLowerCase()).orElse(null);
+
+        // Don't reveal whether the email exists — always behave the same way
+        if (user == null) {
+            return;
+        }
+
+        // Remove any existing token for this user before creating a new one
+        passwordResetTokenRepository.deleteByUserEmail(user.getEmail());
+
+        String token = UUID.randomUUID().toString();
+        PasswordResetToken resetToken = PasswordResetToken.builder()
+                .token(token)
+                .userEmail(user.getEmail())
+                .expiryDate(LocalDateTime.now().plusMinutes(15))
+                .build();
+
+        passwordResetTokenRepository.save(resetToken);
+        emailService.sendPasswordResetEmail(user.getEmail(), token);
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new PasswordMismatchException("New password and confirm password do not match");
+        }
+
+        PasswordResetToken resetToken = passwordResetTokenRepository
+                .findByToken(request.getToken())
+                .orElseThrow(() -> new InvalidTokenException("Invalid or expired reset token"));
+
+        if (resetToken.isExpired()) {
+            passwordResetTokenRepository.deleteByUserEmail(resetToken.getUserEmail());
+            throw new InvalidTokenException("Reset token has expired");
+        }
+
+        User user = userRepository.findByEmail(resetToken.getUserEmail())
+                .orElseThrow(() -> new InvalidTokenException("User not found"));
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+
+        passwordResetTokenRepository.deleteByUserEmail(user.getEmail());
+    }
+
     // ─── helpers ────────────────────────────────────────────────────────────────
 
 
@@ -192,4 +251,3 @@ if (lastName == null || lastName.isBlank()) {
                 .build();
     }
 }
-
