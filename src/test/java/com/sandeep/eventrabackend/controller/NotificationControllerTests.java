@@ -43,27 +43,26 @@ public class NotificationControllerTests {
     @BeforeEach
     void setUp() {
         notificationRepository.deleteAll();
-        userRepository.deleteAll();
 
-        testUser1 = User.builder()
-                .firstName("User1")
-                .lastName("Test")
-                .email("user1@example.com")
-                .username("user1")
-                .password("password")
-                .role(Role.CLIENT)
-                .build();
-        userRepository.save(testUser1);
+        testUser1 = userRepository.findByEmail("user1@example.com")
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .firstName("User1")
+                        .lastName("Test")
+                        .email("user1@example.com")
+                        .username("user1")
+                        .password("password")
+                        .role(Role.CLIENT)
+                        .build()));
 
-        testUser2 = User.builder()
-                .firstName("User2")
-                .lastName("Test")
-                .email("user2@example.com")
-                .username("user2")
-                .password("password")
-                .role(Role.CLIENT)
-                .build();
-        userRepository.save(testUser2);
+        testUser2 = userRepository.findByEmail("user2@example.com")
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .firstName("User2")
+                        .lastName("Test")
+                        .email("user2@example.com")
+                        .username("user2")
+                        .password("password")
+                        .role(Role.CLIENT)
+                        .build()));
     }
 
     @Test

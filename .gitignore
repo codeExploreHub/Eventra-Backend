@@ -8,6 +8,10 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### ENV ###
+.env
+.env.local
+
 ### STS ###
 .apt_generated
 .classpath
