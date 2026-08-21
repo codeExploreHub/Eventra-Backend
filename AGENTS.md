@@ -18,6 +18,9 @@ and exit codes to the delivery lead and QA/reviewer.
 - Use `.mvn/settings-public.xml` for Maven commands. It must mirror only the
   public HTTPS Maven Central repository; never add company repositories or
   credentials.
+- Use `scripts/test-local.sh` as the standard backend quality command. It
+  accepts the current Java when it is 17 or newer and selects an installed JDK
+  21 or 17 on macOS when the current Java is older.
 
 ## Secrets and local development
 

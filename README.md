@@ -67,7 +67,7 @@ The backend implements a comprehensive set of modules to handle various platform
 
 3.  **Run the application**:
     ```bash
-    ./mvnw -s .mvn/settings-public.xml test
+    scripts/test-local.sh
     scripts/run-local.sh --env-file /absolute/path/to/ignored/backend.env
     scripts/smoke-local.sh
     ```
@@ -92,19 +92,18 @@ The backend implements a comprehensive set of modules to handle various platform
 
 To execute the full test suite:
 
-**Windows**:
-```powershell
-.\mvnw test
+```bash
+scripts/test-local.sh
 ```
 
-**Unix / macOS**:
-```bash
-./mvnw test
-```
+The standard test command accepts the current Java when it is version 17 or
+newer. On macOS, if the current Java is older, it selects an installed JDK 21
+or falls back to JDK 17 before invoking the Maven Wrapper with the repository's
+public Maven settings.
 
 To run a specific test class:
 ```bash
-./mvnw test -Dtest=FeedbackControllerTests
+scripts/test-local.sh -Dtest=FeedbackControllerTests
 ```
 
 ## Swagger / API Documentation

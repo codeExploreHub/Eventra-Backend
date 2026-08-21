@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "-XshowSettings:properties" ]]; then
+  printf '    java.home = %s\n' '@JAVA_HOME@' >&2
+fi
+printf 'java version "%s"\n' '@VERSION@' >&2
