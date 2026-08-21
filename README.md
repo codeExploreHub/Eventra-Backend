@@ -58,29 +58,25 @@ The backend implements a comprehensive set of modules to handle various platform
     ```
 
 2.  **Set Environment Variables**:
-    You must set a `JWT_SECRET` for the application to start.
-
-    **Windows (PowerShell)**:
-    ```powershell
-    $env:JWT_SECRET="your-development-secret-key-at-least-64-characters-long-for-security"
-    ```
-
-    **Unix / macOS**:
-    ```bash
-    export JWT_SECRET="your-development-secret-key-at-least-64-characters-long-for-security"
-    ```
+    You must set a stable `JWT_SECRET` with at least 64 characters for the
+    application to start. Keep the value in an ignored env file; never commit
+    it. `--env-file` accepts only a user-created, trusted local shell
+    environment file because the startup script sources it. Multica supplies
+    `JWT_SECRET` through agent custom environment, so its worktrees run
+    `scripts/run-local.sh` without copying `.env.local`.
 
 3.  **Run the application**:
     ```bash
-    ./mvnw spring-boot:run
+    ./mvnw -s .mvn/settings-public.xml test
+    scripts/run-local.sh --env-file /absolute/path/to/ignored/backend.env
+    scripts/smoke-local.sh
     ```
-    *(Use `.\mvnw` on Windows)*
 
 ## Environment Variables
 
 | Variable | Required | Description |
 | :--- | :--- | :--- |
-| `JWT_SECRET` | **Yes** | Secret key for signing JWT tokens (min 64 chars recommended) |
+| `JWT_SECRET` | **Yes** | Secret key for signing JWT tokens (at least 64 characters required) |
 | `JWT_EXPIRATION_MS`| No | Token validity duration in ms (Default: 86400000 - 24h) |
 | `CORS_ALLOWED_ORIGINS`| No | Comma-separated list of allowed origins |
 | `RATE_LIMIT_ENABLED`| No | Toggle for API rate limiting (Default: true) |
