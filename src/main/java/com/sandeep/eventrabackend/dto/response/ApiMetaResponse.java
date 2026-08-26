@@ -18,6 +18,12 @@ public record ApiMetaResponse(
                 example = "v1",
                 requiredMode = Schema.RequiredMode.REQUIRED
         )
-        String apiVersion
+        String apiVersion,
+        @Schema(
+                description = "Stable backend build version",
+                example = "0.0.1-SNAPSHOT",
+                requiredMode = Schema.RequiredMode.REQUIRED
+        )
+        String buildVersion
 ) {
 }
