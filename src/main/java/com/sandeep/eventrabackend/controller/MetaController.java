@@ -21,7 +21,7 @@ public class MetaController {
     @SecurityRequirements
     @Operation(
             summary = "Get public API metadata",
-            description = "Returns the stable service identifier and public API version."
+            description = "Returns the stable service identifier, public API version, and build version."
     )
     @ApiResponse(
             responseCode = "200",
@@ -32,6 +32,6 @@ public class MetaController {
             )
     )
     public ApiMetaResponse getMeta() {
-        return new ApiMetaResponse("eventra-backend", "v1");
+        return new ApiMetaResponse("eventra-backend", "v1", "0.0.1-SNAPSHOT");
     }
 }

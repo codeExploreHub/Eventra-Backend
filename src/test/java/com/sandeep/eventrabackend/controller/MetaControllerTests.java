@@ -26,9 +26,10 @@ class MetaControllerTests {
     void getMeta_withoutAuthentication_shouldReturnStableExactSchema() throws Exception {
         mockMvc.perform(get("/api/meta"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", aMapWithSize(2)))
+                .andExpect(jsonPath("$", aMapWithSize(3)))
                 .andExpect(jsonPath("$.service").value("eventra-backend"))
-                .andExpect(jsonPath("$.apiVersion").value("v1"));
+                .andExpect(jsonPath("$.apiVersion").value("v1"))
+                .andExpect(jsonPath("$.buildVersion").value("0.0.1-SNAPSHOT"));
     }
 
     @Test
@@ -38,11 +39,12 @@ class MetaControllerTests {
                 .andExpect(jsonPath("$.paths['/api/meta'].get.security", hasSize(0)))
                 .andExpect(jsonPath("$.paths['/api/meta'].get.responses['200'].content['application/json'].schema['$ref']")
                         .value("#/components/schemas/ApiMetaResponse"))
-                .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.properties", aMapWithSize(2)))
+                .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.properties", aMapWithSize(3)))
                 .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.properties.service").exists())
                 .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.properties.apiVersion").exists())
+                .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.properties.buildVersion").exists())
                 .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.required",
-                        containsInAnyOrder("service", "apiVersion")))
+                        containsInAnyOrder("service", "apiVersion", "buildVersion")))
                 .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.additionalProperties").value(false));
     }
 }
