@@ -123,6 +123,7 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/actuator/health/**"
                         ).permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/meta").permitAll()
                         .requestMatchers("/api/contact", "/api/contact/**", "/api/contacts", "/api/contacts/**").permitAll()
                         // ── Public: Event read-only endpoints ────────────────
                         // Anyone can view an event or check its availability;
