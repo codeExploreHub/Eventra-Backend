@@ -8,6 +8,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.aMapWithSize;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -39,6 +40,9 @@ class MetaControllerTests {
                         .value("#/components/schemas/ApiMetaResponse"))
                 .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.properties", aMapWithSize(2)))
                 .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.properties.service").exists())
-                .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.properties.apiVersion").exists());
+                .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.properties.apiVersion").exists())
+                .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.required",
+                        containsInAnyOrder("service", "apiVersion")))
+                .andExpect(jsonPath("$.components.schemas.ApiMetaResponse.additionalProperties").value(false));
     }
 }
