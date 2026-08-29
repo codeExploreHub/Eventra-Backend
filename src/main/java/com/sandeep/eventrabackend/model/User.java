@@ -9,6 +9,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.Locale;
 
 @Data
 @Builder
@@ -18,7 +19,8 @@ import java.time.LocalDateTime;
 @Table(name = "users",
         uniqueConstraints = {
                 @UniqueConstraint(columnNames = "email"),
-                @UniqueConstraint(columnNames = "username")
+                @UniqueConstraint(columnNames = "username"),
+                @UniqueConstraint(name = "uk_users_username_normalized", columnNames = "username_normalized")
         })
 public class User {
 
@@ -38,6 +40,9 @@ public class User {
     @Column(nullable = false, unique = true, length = 50)
     private String username;
 
+    @Column(name = "username_normalized", nullable = false, unique = true, length = 50)
+    private String usernameNormalized;
+
     @Column(nullable = false)
     private String password;
 
@@ -52,4 +57,11 @@ public class User {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @PrePersist
+    @PreUpdate
+    void normalizeUsername() {
+        username = username.trim();
+        usernameNormalized = username.toLowerCase(Locale.ROOT);
+    }
 }

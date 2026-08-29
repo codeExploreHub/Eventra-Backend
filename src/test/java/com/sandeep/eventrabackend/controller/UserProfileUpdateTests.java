@@ -133,12 +133,12 @@ public class UserProfileUpdateTests {
     }
 
     @Test
-    @DisplayName("PUT /api/users/profile - Duplicate Username")
-    void testUpdateUserProfile_DuplicateUsername() throws Exception {
+    @DisplayName("PUT /api/users/profile rejects a case-insensitive conflict without partial updates")
+    void updateUserProfile_caseInsensitiveDuplicate_rollsBackEveryProfileField() throws Exception {
         UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()
-                .firstName("John")
-                .lastName("Doe")
-                .username("janesmith") // already used by jane@example.com
+                .firstName("Changed")
+                .lastName("Name")
+                .username("  JANESMITH  ")
                 .build();
 
         mockMvc.perform(put("/api/users/profile")
@@ -146,10 +146,32 @@ public class UserProfileUpdateTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("Username already exists: janesmith"));
+                .andExpect(jsonPath("$.message").value("Username is already in use"));
 
         User user = userRepository.findByEmail("john@example.com").orElseThrow();
+        assertEquals("John", user.getFirstName());
+        assertEquals("Doe", user.getLastName());
         assertEquals("johndoe", user.getUsername());
+    }
+
+    @Test
+    @DisplayName("PUT /api/users/profile trims the username before saving")
+    void updateUserProfile_usernameHasSurroundingWhitespace_savesTrimmedUsername() throws Exception {
+        UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()
+                .firstName("Johnny")
+                .lastName("Doe")
+                .username("  JohnnyNew  ")
+                .build();
+
+        mockMvc.perform(put("/api/users/profile")
+                        .with(user("john@example.com"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("JohnnyNew"));
+
+        User user = userRepository.findByEmail("john@example.com").orElseThrow();
+        assertEquals("JohnnyNew", user.getUsername());
     }
 
     @Test

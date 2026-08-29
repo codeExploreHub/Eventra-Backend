@@ -23,6 +23,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByUsername(String username);
 
+    boolean existsByUsernameIgnoreCaseAndIdNot(String username, Long id);
+
     // ── Admin panel queries ────────────────────────────────────────────────
 
     /** Returns all users with a specific role, paginated. */

@@ -4,7 +4,7 @@ import com.sandeep.eventrabackend.dto.request.UserProfileUpdateRequest;
 import com.sandeep.eventrabackend.dto.response.ErrorResponse;
 import com.sandeep.eventrabackend.dto.response.MyRegisteredEventResponse;
 import com.sandeep.eventrabackend.dto.response.UserProfileResponse;
-import com.sandeep.eventrabackend.exception.UserAlreadyExistsException;
+import com.sandeep.eventrabackend.dto.response.UsernameAvailabilityResponse;
 import com.sandeep.eventrabackend.model.User;
 import com.sandeep.eventrabackend.repository.UserRepository;
 import com.sandeep.eventrabackend.service.EventService;
@@ -20,10 +20,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import com.sandeep.eventrabackend.dto.request.UpdateUserProfileRequest;
-import com.sandeep.eventrabackend.dto.response.UserProfileResponse;
 import com.sandeep.eventrabackend.service.UserService;
-import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -118,23 +115,37 @@ public class UserController {
     public ResponseEntity<UserProfileResponse> updateUserProfile(
             @Valid @RequestBody UserProfileUpdateRequest request,
             Authentication authentication) {
-        
-        String email = authentication.getName();
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
+        return ResponseEntity.ok(userService.updateProfile(authentication.getName(), request));
+    }
 
-        // Check if username is being changed and if new username already exists
-        if (!user.getUsername().equals(request.getUsername()) && 
-                userRepository.existsByUsername(request.getUsername())) {
-            throw new UserAlreadyExistsException("Username already exists: " + request.getUsername());
-        }
-
-        user.setFirstName(request.getFirstName());
-        user.setLastName(request.getLastName());
-        user.setUsername(request.getUsername());
-
-        User updatedUser = userRepository.save(user);
-        return ResponseEntity.ok(mapToUserProfileResponse(updatedUser));
+    @GetMapping("/username-availability")
+    @Operation(
+            summary = "Check username availability",
+            description = "Checks a trimmed username candidate case-insensitively for the authenticated user.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Username availability checked successfully",
+                    content = @Content(schema = @Schema(implementation = UsernameAvailabilityResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Missing, blank, or invalid username candidate",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Unauthorized - JWT token missing or invalid",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))
+            )
+    })
+    public ResponseEntity<UsernameAvailabilityResponse> getUsernameAvailability(
+            @RequestParam(required = false) String username,
+            Authentication authentication) {
+        return ResponseEntity.ok(
+                userService.getUsernameAvailability(authentication.getName(), username));
     }
 
 /*
