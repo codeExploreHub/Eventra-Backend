@@ -67,7 +67,7 @@ class UserProfileAtomicConflictTests {
     @DisplayName("PUT profile maps an atomic uniqueness race to 409 and rolls back all fields")
     void updateUserProfile_uniqueConstraintRace_returnsConflictAndRollsBackProfile() throws Exception {
         doReturn(false).when(userRepository)
-                .existsByUsernameIgnoreCaseAndIdNot(eq("RacingUser"), anyLong());
+                .existsByUsernameNormalizedAndIdNot(eq("racinguser"), anyLong());
         doThrow(new DataIntegrityViolationException("simulated concurrent username claim"))
                 .when(userRepository).saveAndFlush(any(User.class));
 

@@ -29,7 +29,8 @@ public class UserService {
     ) {
         User user = findAuthenticatedUser(authenticatedEmail);
         String username = normalizeAndValidateUsername(candidate);
-        boolean available = !userRepository.existsByUsernameIgnoreCaseAndIdNot(username, user.getId());
+        boolean available = !userRepository.existsByUsernameNormalizedAndIdNot(
+                User.normalizeUsernameKey(username), user.getId());
         return new UsernameAvailabilityResponse(username, available);
     }
 
@@ -41,7 +42,8 @@ public class UserService {
         User user = findAuthenticatedUser(authenticatedEmail);
         String username = normalizeAndValidateUsername(request.getUsername());
 
-        if (userRepository.existsByUsernameIgnoreCaseAndIdNot(username, user.getId())) {
+        if (userRepository.existsByUsernameNormalizedAndIdNot(
+                User.normalizeUsernameKey(username), user.getId())) {
             throw usernameConflict();
         }
 

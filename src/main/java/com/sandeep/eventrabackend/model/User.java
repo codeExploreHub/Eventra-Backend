@@ -61,6 +61,10 @@ public class User {
     @PreUpdate
     void normalizeUsername() {
         username = username.trim();
-        usernameNormalized = username.toLowerCase(Locale.ROOT);
+        usernameNormalized = normalizeUsernameKey(username);
+    }
+
+    public static String normalizeUsernameKey(String username) {
+        return username.trim().toLowerCase(Locale.ROOT);
     }
 }

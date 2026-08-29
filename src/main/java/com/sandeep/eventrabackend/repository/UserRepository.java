@@ -23,9 +23,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByUsername(String username);
 
-    boolean existsByUsernameIgnoreCase(String username);
+    boolean existsByUsernameNormalized(String usernameNormalized);
 
-    boolean existsByUsernameIgnoreCaseAndIdNot(String username, Long id);
+    boolean existsByUsernameNormalizedAndIdNot(String usernameNormalized, Long id);
 
     // ── Admin panel queries ────────────────────────────────────────────────
 

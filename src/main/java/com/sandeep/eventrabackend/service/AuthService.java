@@ -232,7 +232,7 @@ if (lastName == null || lastName.isBlank()) {
     private String generateUniqueUsername(String base) {
         String candidate = base;
         int counter = 1;
-        while (userRepository.existsByUsernameIgnoreCase(candidate)) {
+        while (userRepository.existsByUsernameNormalized(User.normalizeUsernameKey(candidate))) {
             candidate = base + counter++;
         }
         return candidate;

@@ -13,6 +13,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -41,6 +42,9 @@ class UsernameAvailabilityTests {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
@@ -90,8 +94,34 @@ class UsernameAvailabilityTests {
     }
 
     @Test
+    @DisplayName("GET username availability uses the migrated normalized key for a legacy username")
+    void usernameAvailability_otherUsersLegacyWhitespaceUsername_returnsUnavailable() throws Exception {
+        seedLegacyUsername("jane@example.com", " JaneSmith ", "janesmith");
+
+        mockMvc.perform(get("/api/users/username-availability")
+                        .with(user("john@example.com"))
+                        .queryParam("username", "  JANESMITH  "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("JANESMITH"))
+                .andExpect(jsonPath("$.available").value(false));
+    }
+
+    @Test
     @DisplayName("GET username availability treats the authenticated user's username as available")
     void usernameAvailability_ownUsernameWithDifferentCase_returnsAvailable() throws Exception {
+        mockMvc.perform(get("/api/users/username-availability")
+                        .with(user("john@example.com"))
+                        .queryParam("username", "  JOHNDOE  "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("JOHNDOE"))
+                .andExpect(jsonPath("$.available").value(true));
+    }
+
+    @Test
+    @DisplayName("GET username availability excludes the current user's migrated normalized key")
+    void usernameAvailability_ownLegacyWhitespaceUsername_returnsAvailable() throws Exception {
+        seedLegacyUsername("john@example.com", " JohnDoe ", "johndoe");
+
         mockMvc.perform(get("/api/users/username-availability")
                         .with(user("john@example.com"))
                         .queryParam("username", "  JOHNDOE  "))
@@ -123,5 +153,13 @@ class UsernameAvailabilityTests {
                         .with(user("john@example.com"))
                         .queryParam("username", candidate))
                 .andExpect(status().isBadRequest());
+    }
+
+    private void seedLegacyUsername(String email, String username, String normalizedUsername) {
+        jdbcTemplate.update(
+                "update users set username = ?, username_normalized = ? where email = ?",
+                username,
+                normalizedUsername,
+                email);
     }
 }

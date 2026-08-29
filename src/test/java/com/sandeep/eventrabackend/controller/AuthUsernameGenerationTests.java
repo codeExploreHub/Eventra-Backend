@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -57,6 +58,9 @@ class AuthUsernameGenerationTests {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @BeforeEach
     void setUp() {
         notificationRepository.deleteAll();
@@ -78,6 +82,28 @@ class AuthUsernameGenerationTests {
     @Test
     @DisplayName("Signup generates the next username when the base differs only by case")
     void signup_baseUsernameDiffersOnlyByCase_generatesNextAvailableUsername() throws Exception {
+        SignupRequest request = new SignupRequest();
+        request.setFirstName("New");
+        request.setLastName("User");
+        request.setEmail("mixedcase@example.net");
+        request.setPassword("password123");
+        request.setConfirmPassword("password123");
+
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value("mixedcase1"));
+    }
+
+    @Test
+    @DisplayName("Signup uses the migrated normalized key when generating a username")
+    void signup_baseUsernameMatchesLegacyWhitespaceUsername_generatesNextAvailableUsername() throws Exception {
+        jdbcTemplate.update(
+                "update users set username = ?, username_normalized = ? where email = ?",
+                " MixedCase ",
+                "mixedcase",
+                "existing@example.com");
         SignupRequest request = new SignupRequest();
         request.setFirstName("New");
         request.setLastName("User");

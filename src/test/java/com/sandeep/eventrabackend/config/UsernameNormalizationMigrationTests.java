@@ -17,9 +17,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class UsernameNormalizationMigrationTests {
 
     @Test
-    @DisplayName("V3 backfills normalized usernames in a populated users table")
-    void migrate_populatedUsers_backfillsAndEnforcesCaseInsensitiveUniqueness() {
-        DataSource dataSource = populatedUsersDatabase("Alice", "Bob");
+    @DisplayName("V3 trims legacy usernames while backfilling normalized uniqueness")
+    void migrate_legacyWhitespaceUsername_backfillsAndEnforcesNormalizedUniqueness() {
+        DataSource dataSource = populatedUsersDatabase(" Alice ", "Bob");
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
 
         runMigration(dataSource);
