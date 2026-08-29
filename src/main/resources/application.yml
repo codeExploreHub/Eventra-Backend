@@ -33,10 +33,16 @@ spring:
     password:
 
   jpa:
+    defer-datasource-initialization: true
     hibernate:
       ddl-auto: update
 
     database-platform: org.hibernate.dialect.H2Dialect
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/migration/V3__username_normalized_uniqueness.sql
 
   mail:
     host: smtp.gmail.com

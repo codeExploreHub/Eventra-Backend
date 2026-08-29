@@ -175,6 +175,24 @@ public class UserProfileUpdateTests {
     }
 
     @Test
+    @DisplayName("PUT /api/users/profile validates the trimmed 50-character username")
+    void updateUserProfile_trimmedUsernameAtMaximumLength_succeeds() throws Exception {
+        String username = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwx";
+        UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()
+                .firstName("Johnny")
+                .lastName("Doe")
+                .username("  " + username + "  ")
+                .build();
+
+        mockMvc.perform(put("/api/users/profile")
+                        .with(user("john@example.com"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value(username));
+    }
+
+    @Test
     @DisplayName("PUT /api/users/profile - Same Username (No Conflict)")
     void testUpdateUserProfile_SameUsername() throws Exception {
         UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()

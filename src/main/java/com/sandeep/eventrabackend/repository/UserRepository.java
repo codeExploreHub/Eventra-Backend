@@ -23,6 +23,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByUsername(String username);
 
+    boolean existsByUsernameIgnoreCase(String username);
+
     boolean existsByUsernameIgnoreCaseAndIdNot(String username, Long id);
 
     // ── Admin panel queries ────────────────────────────────────────────────

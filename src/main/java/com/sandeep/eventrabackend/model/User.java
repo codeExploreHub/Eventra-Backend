@@ -19,8 +19,7 @@ import java.util.Locale;
 @Table(name = "users",
         uniqueConstraints = {
                 @UniqueConstraint(columnNames = "email"),
-                @UniqueConstraint(columnNames = "username"),
-                @UniqueConstraint(name = "uk_users_username_normalized", columnNames = "username_normalized")
+                @UniqueConstraint(columnNames = "username")
         })
 public class User {
 
@@ -40,7 +39,7 @@ public class User {
     @Column(nullable = false, unique = true, length = 50)
     private String username;
 
-    @Column(name = "username_normalized", nullable = false, unique = true, length = 50)
+    @Column(name = "username_normalized", length = 50)
     private String usernameNormalized;
 
     @Column(nullable = false)
