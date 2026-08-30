@@ -1,5 +1,6 @@
 package com.sandeep.eventrabackend.config;
 
+import com.sandeep.eventrabackend.model.UsernamePolicy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.core.io.ClassPathResource;
@@ -12,8 +13,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashMap;
+import java.util.Map;
 
 @Component
 public class UsernameMigrationInitializer implements SmartInitializingSingleton {
@@ -52,16 +56,60 @@ public class UsernameMigrationInitializer implements SmartInitializingSingleton 
     private void executeMigration() {
         Connection connection = DataSourceUtils.getConnection(dataSource);
         try {
-            if ("PostgreSQL".equals(connection.getMetaData().getDatabaseProductName())) {
+            String databaseProductName = connection.getMetaData().getDatabaseProductName();
+            if ("PostgreSQL".equals(databaseProductName)) {
                 try (Statement statement = connection.createStatement()) {
                     statement.execute("SELECT pg_advisory_xact_lock(" + POSTGRESQL_MIGRATION_LOCK_ID + ")");
                 }
             }
-            migration.populate(connection);
+            if ("H2".equals(databaseProductName)) {
+                executeH2Migration(connection);
+            } else {
+                migration.populate(connection);
+            }
         } catch (SQLException ex) {
             throw new IllegalStateException("Username normalization migration failed", ex);
         } finally {
             DataSourceUtils.releaseConnection(connection, dataSource);
+        }
+    }
+
+    private void executeH2Migration(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("SET EXCLUSIVE 1");
+        }
+        try {
+            validateH2LegacyUsernames(connection);
+            migration.populate(connection);
+        } finally {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("SET EXCLUSIVE 0");
+            }
+        }
+    }
+
+    private void validateH2LegacyUsernames(Connection connection) throws SQLException {
+        Map<String, Long> idsByNormalizedUsername = new HashMap<>();
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT id, username FROM users ORDER BY id")) {
+            while (rows.next()) {
+                long id = rows.getLong("id");
+                String normalizedUsername;
+                try {
+                    normalizedUsername = UsernamePolicy.normalizeKey(rows.getString("username"));
+                } catch (IllegalArgumentException ex) {
+                    throw new IllegalStateException(
+                            "H2 username migration preflight found invalid legacy username at id " + id,
+                            ex);
+                }
+
+                Long conflictingId = idsByNormalizedUsername.putIfAbsent(normalizedUsername, id);
+                if (conflictingId != null) {
+                    throw new IllegalStateException(
+                            "H2 username migration preflight found normalized username collision between ids "
+                                    + conflictingId + " and " + id);
+                }
+            }
         }
     }
 }

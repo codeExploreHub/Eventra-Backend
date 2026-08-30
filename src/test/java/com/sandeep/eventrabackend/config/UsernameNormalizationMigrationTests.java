@@ -5,16 +5,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
 import javax.sql.DataSource;
+import java.sql.SQLException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 class UsernameNormalizationMigrationTests {
 
@@ -26,7 +34,7 @@ class UsernameNormalizationMigrationTests {
                 "Bob");
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
 
-        runMigration(dataSource);
+        runInitializerMigration(dataSource);
 
         assertThat(jdbcTemplate.queryForList(
                 "select username from users order by id", String.class))
@@ -101,6 +109,86 @@ class UsernameNormalizationMigrationTests {
                 .isInstanceOf(DataAccessException.class);
     }
 
+    @Test
+    @DisplayName("H2 startup preserves invalid legacy rows when migration fails")
+    void initialize_invalidLegacyUsername_failsWithoutRewritingRows() {
+        DataSource dataSource = populatedUsersDatabaseWithNormalizedColumn(
+                "\tbad-name\t",
+                "ValidUser");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        var rowsBeforeMigration = legacyUsernameState(jdbcTemplate);
+
+        Throwable failure = catchThrowable(() -> runInitializerMigration(dataSource));
+
+        assertThat(legacyUsernameState(jdbcTemplate)).isEqualTo(rowsBeforeMigration);
+        assertThat(failure)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("invalid legacy username")
+                .hasMessageContaining("id 1");
+    }
+
+    @Test
+    @DisplayName("H2 startup preserves colliding legacy rows when migration fails")
+    void initialize_normalizedCollision_failsWithoutRewritingRows() {
+        DataSource dataSource = populatedUsersDatabaseWithNormalizedColumn(
+                " Alice ",
+                "alice");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        var rowsBeforeMigration = legacyUsernameState(jdbcTemplate);
+
+        Throwable failure = catchThrowable(() -> runInitializerMigration(dataSource));
+
+        assertThat(legacyUsernameState(jdbcTemplate)).isEqualTo(rowsBeforeMigration);
+        assertThat(failure)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("normalized username collision")
+                .hasMessageContaining("ids 1 and 2");
+    }
+
+    @Test
+    @DisplayName("H2 startup rejects concurrent writes for the complete migration window")
+    void initialize_h2Migration_rejectsConcurrentWritesUntilMigrationCompletes() throws Exception {
+        DataSource dataSource = populatedUsersDatabaseWithNormalizedColumn("Alice", "Bob");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        CountDownLatch migrationEntered = new CountDownLatch(1);
+        CountDownLatch releaseMigration = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+
+        try {
+            var initializerFuture = executor.submit(() -> new UsernameMigrationInitializer(
+                    dataSource,
+                    new DataSourceTransactionManager(dataSource),
+                    connection -> {
+                        migrationEntered.countDown();
+                        try {
+                            if (!releaseMigration.await(5, TimeUnit.SECONDS)) {
+                                throw new SQLException("Timed out waiting to release migration");
+                            }
+                        } catch (InterruptedException ex) {
+                            Thread.currentThread().interrupt();
+                            throw new SQLException("Interrupted while waiting to release migration", ex);
+                        }
+                    }).afterSingletonsInstantiated());
+
+            assertThat(migrationEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            var writerFuture = executor.submit(() -> jdbcTemplate.update(
+                    "update users set username = 'Writer' where id = 2"));
+
+            assertThatThrownBy(() -> writerFuture.get(5, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class)
+                    .hasCauseInstanceOf(CannotGetJdbcConnectionException.class);
+
+            releaseMigration.countDown();
+            initializerFuture.get(5, TimeUnit.SECONDS);
+            assertThat(jdbcTemplate.update(
+                    "update users set username = 'Writer' where id = 2"))
+                    .isEqualTo(1);
+        } finally {
+            releaseMigration.countDown();
+            executor.shutdownNow();
+        }
+    }
+
     private DataSource populatedUsersDatabase(String firstUsername, String secondUsername) {
         DataSource dataSource = new EmbeddedDatabaseBuilder()
                 .generateUniqueName(true)
@@ -113,9 +201,49 @@ class UsernameNormalizationMigrationTests {
         return dataSource;
     }
 
+    private DataSource populatedUsersDatabaseWithNormalizedColumn(
+            String firstUsername,
+            String secondUsername) {
+        DataSource dataSource = new EmbeddedDatabaseBuilder()
+                .generateUniqueName(true)
+                .setType(EmbeddedDatabaseType.H2)
+                .build();
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        jdbcTemplate.execute("""
+                create table users (
+                    id bigint primary key,
+                    username varchar(50) not null unique,
+                    username_normalized varchar(50)
+                )
+                """);
+        jdbcTemplate.update("insert into users (id, username) values (1, ?)", firstUsername);
+        jdbcTemplate.update("insert into users (id, username) values (2, ?)", secondUsername);
+        return dataSource;
+    }
+
+    private java.util.List<LegacyUsernameState> legacyUsernameState(JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate.query(
+                "select username, username_normalized from users order by id",
+                (resultSet, rowNumber) -> new LegacyUsernameState(
+                        resultSet.getString("username"),
+                        resultSet.getString("username_normalized")));
+    }
+
+    private void runInitializerMigration(DataSource dataSource) {
+        new UsernameMigrationInitializer(
+                dataSource,
+                new DataSourceTransactionManager(dataSource),
+                new ResourceDatabasePopulator(new ClassPathResource(
+                        "db/migration/V3__username_normalized_uniqueness.sql")))
+                .afterSingletonsInstantiated();
+    }
+
     private void runMigration(DataSource dataSource) {
         new ResourceDatabasePopulator(new ClassPathResource(
                 "db/migration/V3__username_normalized_uniqueness.sql"))
                 .execute(dataSource);
+    }
+
+    private record LegacyUsernameState(String username, String normalizedUsername) {
     }
 }

@@ -12,12 +12,11 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
 import java.sql.Statement;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,6 +34,8 @@ class UsernameMigrationInitializerTests {
     private DatabaseMetaData metadata;
     @Mock
     private Statement statement;
+    @Mock
+    private ResultSet resultSet;
 
     @Test
     void run_postgresql_acquiresTransactionLockBeforeMigration() throws Exception {
@@ -55,17 +56,24 @@ class UsernameMigrationInitializerTests {
     }
 
     @Test
-    void run_h2_executesMigrationWithoutPostgresqlLock() throws Exception {
+    void run_h2_preflightsLegacyRowsBeforeMigration() throws Exception {
         when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.getMetaData()).thenReturn(metadata);
         when(metadata.getDatabaseProductName()).thenReturn("H2");
+        when(connection.createStatement()).thenReturn(statement);
+        when(statement.executeQuery("SELECT id, username FROM users ORDER BY id"))
+                .thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(false);
 
         UsernameMigrationInitializer initializer =
                 new UsernameMigrationInitializer(dataSource, transactionManager, migration);
         initializer.afterSingletonsInstantiated();
 
-        verify(connection, never()).createStatement();
-        verify(migration).populate(connection);
+        InOrder order = inOrder(statement, migration);
+        order.verify(statement).execute("SET EXCLUSIVE 1");
+        order.verify(statement).executeQuery("SELECT id, username FROM users ORDER BY id");
+        order.verify(migration).populate(connection);
+        order.verify(statement).execute("SET EXCLUSIVE 0");
     }
 }
