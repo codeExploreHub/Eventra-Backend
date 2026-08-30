@@ -6,6 +6,7 @@ import com.sandeep.eventrabackend.exception.InvalidTokenException;
 import com.sandeep.eventrabackend.model.PasswordResetToken;
 import com.sandeep.eventrabackend.repository.PasswordResetTokenRepository;
 import java.time.LocalDateTime;
+import java.util.function.Function;
 import com.sandeep.eventrabackend.dto.request.LoginRequest;
 import com.sandeep.eventrabackend.dto.request.SignupRequest;
 import com.sandeep.eventrabackend.dto.response.AuthResponse;
@@ -13,6 +14,7 @@ import com.sandeep.eventrabackend.exception.PasswordMismatchException;
 import com.sandeep.eventrabackend.exception.UserAlreadyExistsException;
 import com.sandeep.eventrabackend.model.Role;
 import com.sandeep.eventrabackend.model.User;
+import com.sandeep.eventrabackend.model.UsernamePolicy;
 import com.sandeep.eventrabackend.repository.UserRepository;
 import com.sandeep.eventrabackend.security.JwtTokenProvider;
 import com.sandeep.eventrabackend.security.TokenBlacklistService;
@@ -25,9 +27,12 @@ import org.springframework.transaction.annotation.Transactional;
 import com.sandeep.eventrabackend.dto.request.GoogleAuthRequest;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @Service
 public class AuthService {
+
+    private static final int GENERATED_USERNAME_SAVE_ATTEMPTS = 100;
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -57,7 +62,6 @@ public class AuthService {
     this.emailService = emailService;
 }
 
-    @Transactional
     public AuthResponse signup(SignupRequest request) {
         // 1. Validate passwords match
         if (!request.getPassword().equals(request.getConfirmPassword())) {
@@ -71,20 +75,30 @@ public class AuthService {
         }
 
         // 3. Derive username from email (local part) and ensure uniqueness
-        String baseUsername = request.getEmail().split("@")[0].toLowerCase();
-        String username = generateUniqueUsername(baseUsername);
+        String baseUsername = UsernamePolicy.generatedBase(request.getEmail().split("@")[0]);
+        String normalizedEmail = request.getEmail().toLowerCase();
+        String encodedPassword = passwordEncoder.encode(request.getPassword());
 
-        // 4. Persist the user
-        User user = User.builder()
-                .firstName(request.getFirstName())
-                .lastName(request.getLastName())
-                .email(request.getEmail().toLowerCase())
-                .username(username)
-                .password(passwordEncoder.encode(request.getPassword()))
-                .role(Role.CLIENT)
-                .build();
-
-        user = userRepository.save(user);
+        // 4. Persist the user. The unique index is the final authority: if a
+        // concurrent request claims a candidate after our availability read,
+        // retry the insert with the next suffix in a fresh repository transaction.
+        User user;
+        try {
+            user = saveWithGeneratedUsername(baseUsername, normalizedEmail, username -> User.builder()
+                    .firstName(request.getFirstName())
+                    .lastName(request.getLastName())
+                    .email(normalizedEmail)
+                    .username(username)
+                    .password(encodedPassword)
+                    .role(Role.CLIENT)
+                    .build());
+        } catch (DataIntegrityViolationException ex) {
+            if (userRepository.existsByEmail(normalizedEmail)) {
+                throw new UserAlreadyExistsException(
+                        "An account with email '" + request.getEmail() + "' already exists");
+            }
+            throw ex;
+        }
 
         // 5. Issue JWT
         String token = jwtTokenProvider.generateToken(user.getEmail());
@@ -140,25 +154,24 @@ if (lastName == null || lastName.isBlank()) {
         if (user == null) {
 
             String baseUsername =
-                    email.split("@")[0].toLowerCase();
+                    UsernamePolicy.generatedBase(email.split("@")[0]);
 
-            String username =
-                    generateUniqueUsername(baseUsername);
-
-            user = User.builder()
-                    .firstName(firstName)
-                    .lastName(lastName)
-                    .email(email.toLowerCase())
-                    .username(username)
-                    .password(
-                            passwordEncoder.encode(
-                                    UUID.randomUUID().toString()
-                            )
-                    )
-                    .role(Role.CLIENT)
-                    .build();
-
-            user = userRepository.save(user);
+            String normalizedEmail = email.toLowerCase();
+            String encodedPassword = passwordEncoder.encode(UUID.randomUUID().toString());
+            String resolvedFirstName = firstName;
+            String resolvedLastName = lastName;
+            try {
+                user = saveWithGeneratedUsername(baseUsername, normalizedEmail, username -> User.builder()
+                        .firstName(resolvedFirstName)
+                        .lastName(resolvedLastName)
+                        .email(normalizedEmail)
+                        .username(username)
+                        .password(encodedPassword)
+                        .role(Role.CLIENT)
+                        .build());
+            } catch (DataIntegrityViolationException ex) {
+                user = userRepository.findByEmail(normalizedEmail).orElseThrow(() -> ex);
+            }
         }
 
         String token =
@@ -229,14 +242,40 @@ if (lastName == null || lastName.isBlank()) {
     // ─── helpers ────────────────────────────────────────────────────────────────
 
 
-    private String generateUniqueUsername(String base) {
-        String candidate = base;
-        int counter = 1;
-        while (userRepository.existsByUsernameNormalized(User.normalizeUsernameKey(candidate))) {
-            candidate = base + counter++;
+    private User saveWithGeneratedUsername(
+            String base,
+            String email,
+            Function<String, User> userFactory) {
+        int suffix = 0;
+        DataIntegrityViolationException lastConflict = null;
+
+        for (int attempt = 0; attempt < GENERATED_USERNAME_SAVE_ATTEMPTS; attempt++) {
+            GeneratedUsername candidate = nextAvailableGeneratedUsername(base, suffix);
+            suffix = candidate.suffix() + 1;
+            try {
+                return userRepository.saveAndFlush(userFactory.apply(candidate.value()));
+            } catch (DataIntegrityViolationException ex) {
+                lastConflict = ex;
+                if (userRepository.existsByEmail(email)) {
+                    throw ex;
+                }
+            }
         }
-        return candidate;
+
+        throw lastConflict;
     }
+
+    private GeneratedUsername nextAvailableGeneratedUsername(String base, int startingSuffix) {
+        int suffix = startingSuffix;
+        String candidate = suffix == 0 ? base : UsernamePolicy.withNumericSuffix(base, suffix);
+        while (userRepository.existsByUsernameNormalized(User.normalizeUsernameKey(candidate))) {
+            suffix++;
+            candidate = UsernamePolicy.withNumericSuffix(base, suffix);
+        }
+        return new GeneratedUsername(candidate, suffix);
+    }
+
+    private record GeneratedUsername(String value, int suffix) {}
 
     private AuthResponse buildAuthResponse(User user, String token) {
         return AuthResponse.builder()

@@ -41,8 +41,9 @@ spring:
 
   sql:
     init:
-      mode: always
-      schema-locations: classpath:db/migration/V3__username_normalized_uniqueness.sql
+      # V3 is run by UsernameMigrationInitializer so PostgreSQL instances
+      # serialize repeatable startup execution with a transaction-scoped lock.
+      mode: never
 
   mail:
     host: smtp.gmail.com

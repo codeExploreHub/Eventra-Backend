@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "app.rate-limit.enabled=false")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AuthUsernameGenerationTests {
@@ -119,5 +119,70 @@ class AuthUsernameGenerationTests {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.username").value("mixedcase1"));
+    }
+
+    @Test
+    @DisplayName("Signup replaces disallowed email-local characters and keeps collision suffixes ASCII")
+    void signup_disallowedEmailLocalCharacters_generatesCollisionSafeAsciiUsername() throws Exception {
+        userRepository.save(User.builder()
+                .firstName("Existing")
+                .lastName("Sanitized")
+                .email("sanitized@example.com")
+                .username("new_user_name")
+                .password(passwordEncoder.encode("password123"))
+                .role(Role.CLIENT)
+                .build());
+
+        SignupRequest request = signupRequest("New.User-Name@example.net");
+
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value("new_user_name1"));
+    }
+
+    @Test
+    @DisplayName("Signup converts a Unicode email-local source to an ASCII username")
+    void signup_unicodeEmailLocalSource_generatesAsciiUsername() throws Exception {
+        SignupRequest request = signupRequest("İXX@example.net");
+
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value("_xx"));
+    }
+
+    @Test
+    @DisplayName("Signup keeps a suffixed generated username within 50 characters")
+    void signup_maximumLengthGeneratedUsernameCollision_truncatesBeforeSuffix() throws Exception {
+        String fiftyCharacters = "a".repeat(50);
+        userRepository.save(User.builder()
+                .firstName("Existing")
+                .lastName("Long")
+                .email("long@example.com")
+                .username(fiftyCharacters)
+                .password(passwordEncoder.encode("password123"))
+                .role(Role.CLIENT)
+                .build());
+
+        SignupRequest request = signupRequest("a".repeat(60) + "@example.net");
+
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value("a".repeat(49) + "1"));
+    }
+
+    private SignupRequest signupRequest(String email) {
+        SignupRequest request = new SignupRequest();
+        request.setFirstName("New");
+        request.setLastName("User");
+        request.setEmail(email);
+        request.setPassword("password123");
+        request.setConfirmPassword("password123");
+        return request;
     }
 }

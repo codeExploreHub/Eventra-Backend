@@ -11,6 +11,8 @@ import com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.Migrate
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,6 +23,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.migrate;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -220,6 +223,36 @@ public class UserProfileUpdateTests {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value(username));
+    }
+
+    @ParameterizedTest(name = "invalid username [{0}] returns 400 without changing the profile")
+    @ValueSource(strings = {
+            "İXX",
+            "user-name",
+            "user.name",
+            "user name",
+            "user!",
+            "\u2003user\u2003"
+    })
+    void updateUserProfile_invalidAsciiUsername_returnsBadRequestWithoutPartialSave(
+            String username
+    ) throws Exception {
+        UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()
+                .firstName("Changed")
+                .lastName("Profile")
+                .username(username)
+                .build();
+
+        mockMvc.perform(put("/api/users/profile")
+                        .with(user("john@example.com"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+
+        User persisted = userRepository.findByEmail("john@example.com").orElseThrow();
+        assertThat(persisted.getFirstName()).isEqualTo("John");
+        assertThat(persisted.getLastName()).isEqualTo("Doe");
+        assertThat(persisted.getUsername()).isEqualTo("johndoe");
     }
 
     @Test

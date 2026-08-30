@@ -151,7 +151,17 @@ class UsernameAvailabilityTests {
     }
 
     @ParameterizedTest(name = "invalid candidate [{0}] returns 400")
-    @ValueSource(strings = {"   ", "ab", "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxy"})
+    @ValueSource(strings = {
+            "   ",
+            "ab",
+            "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxy",
+            "İXX",
+            "user-name",
+            "user.name",
+            "user name",
+            "user!",
+            "\u00a0user\u00a0"
+    })
     void usernameAvailability_invalidCandidate_returnsBadRequest(String candidate) throws Exception {
         mockMvc.perform(get("/api/users/username-availability")
                         .with(user("john@example.com"))

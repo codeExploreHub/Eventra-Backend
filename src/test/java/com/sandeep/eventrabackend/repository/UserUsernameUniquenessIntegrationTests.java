@@ -1,13 +1,17 @@
 package com.sandeep.eventrabackend.repository;
 
+import com.sandeep.eventrabackend.config.UsernameMigrationInitializer;
 import com.sandeep.eventrabackend.model.Role;
 import com.sandeep.eventrabackend.model.User;
 import com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.MigratedUsername;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import static com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.migrate;
@@ -16,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @ActiveProfiles("test")
+@Import(UsernameMigrationInitializer.class)
 class UserUsernameUniquenessIntegrationTests {
 
     @Autowired
@@ -43,6 +48,23 @@ class UserUsernameUniquenessIntegrationTests {
         assertThat(saved.getUsernameNormalized())
                 .isEqualTo(migrated.normalizedUsername())
                 .isEqualTo("entityuser");
+    }
+
+    @ParameterizedTest(name = "entity persistence rejects invalid username [{0}]")
+    @ValueSource(strings = {
+            "İXX",
+            "user-name",
+            "user.name",
+            "user name",
+            "user!",
+            "\u00a0user\u00a0"
+    })
+    @DisplayName("Entity persistence rejects usernames outside the ASCII contract")
+    void saveAndFlush_invalidAsciiUsername_rejectsBeforePersistence(String username) {
+        assertThatThrownBy(() ->
+                userRepository.saveAndFlush(user("invalid@example.com", username)))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Username must be 3 to 50 ASCII letters, digits, or underscores");
     }
 
     private User user(String email, String username) {

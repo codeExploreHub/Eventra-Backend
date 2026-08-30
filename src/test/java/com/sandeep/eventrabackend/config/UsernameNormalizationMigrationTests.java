@@ -2,6 +2,8 @@ package com.sandeep.eventrabackend.config;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,17 +21,75 @@ class UsernameNormalizationMigrationTests {
     @Test
     @DisplayName("V3 applies Java trim semantics to legacy usernames before enforcing uniqueness")
     void migrate_legacyControlWhitespaceUsername_backfillsAndEnforcesNormalizedUniqueness() {
-        DataSource dataSource = populatedUsersDatabase("\t\u001f Alice \r\n", "Bob");
+        DataSource dataSource = populatedUsersDatabase(
+                "\u0000\t\u001f\u0020Alice\u0020\r\u0000",
+                "Bob");
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
 
         runMigration(dataSource);
 
+        assertThat(jdbcTemplate.queryForList(
+                "select username from users order by id", String.class))
+                .containsExactly("Alice", "Bob");
         assertThat(jdbcTemplate.queryForList(
                 "select username_normalized from users order by id", String.class))
                 .containsExactly("alice", "bob");
         assertThatThrownBy(() -> jdbcTemplate.update(
                 "insert into users (id, username, username_normalized) values (3, 'ALICE', 'alice')"))
                 .isInstanceOf(DataAccessException.class);
+    }
+
+    @ParameterizedTest(name = "V3 rejects invalid legacy username [{0}]")
+    @ValueSource(strings = {
+            "İXX",
+            "user-name",
+            "user.name",
+            "user name",
+            "user!",
+            "\u00a0user\u00a0"
+    })
+    @DisplayName("V3 fails closed when a trimmed legacy username is outside the ASCII contract")
+    void migrate_invalidLegacyUsername_failsWithNamedDiagnostic(String invalidUsername) {
+        DataSource dataSource = populatedUsersDatabase(invalidUsername, "ValidUser");
+
+        assertThatThrownBy(() -> runMigration(dataSource))
+                .isInstanceOf(DataAccessException.class)
+                .rootCause()
+                .hasMessageContaining("CK_USERS_USERNAME_ASCII");
+    }
+
+    @Test
+    @DisplayName("V3 constraints reject direct invalid or inconsistent username writes")
+    void migrate_thenDirectInvalidWrites_areRejectedByNamedConstraints() {
+        DataSource dataSource = populatedUsersDatabase("Alice", "Bob");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        runMigration(dataSource);
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "insert into users (id, username, username_normalized) values (3, 'bad-name', 'bad-name')"))
+                .isInstanceOf(DataAccessException.class)
+                .hasMessageContaining("CK_USERS_USERNAME_ASCII");
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "insert into users (id, username, username_normalized) values (4, 'Charlie', 'wrong')"))
+                .isInstanceOf(DataAccessException.class)
+                .hasMessageContaining("CK_USERS_USERNAME_NORMALIZED_CONSISTENT");
+    }
+
+    @Test
+    @DisplayName("V3 can run twice without weakening username constraints")
+    void migrate_secondStartup_remainsSafeAndIdempotent() {
+        DataSource dataSource = populatedUsersDatabase("Alice", "Bob");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+
+        runMigration(dataSource);
+        runMigration(dataSource);
+
+        assertThat(jdbcTemplate.queryForList(
+                "select username from users order by id", String.class))
+                .containsExactly("Alice", "Bob");
+        assertThat(jdbcTemplate.queryForList(
+                "select username_normalized from users order by id", String.class))
+                .containsExactly("alice", "bob");
     }
 
     @Test

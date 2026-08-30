@@ -9,8 +9,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
-import java.util.Locale;
-
 @Data
 @Builder
 @NoArgsConstructor
@@ -60,7 +58,7 @@ public class User {
     @PrePersist
     @PreUpdate
     void normalizeUsername() {
-        username = trimUsername(username);
+        username = UsernamePolicy.canonicalize(username);
         usernameNormalized = normalizeUsernameKey(username);
     }
 
@@ -69,10 +67,10 @@ public class User {
      * every leading and trailing UTF-16 code unit from U+0000 through U+0020.
      */
     public static String trimUsername(String username) {
-        return username.trim();
+        return UsernamePolicy.trim(username);
     }
 
     public static String normalizeUsernameKey(String username) {
-        return trimUsername(username).toLowerCase(Locale.ROOT);
+        return UsernamePolicy.normalizeKey(username);
     }
 }

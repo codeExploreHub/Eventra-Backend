@@ -6,6 +6,7 @@ import com.sandeep.eventrabackend.dto.response.UserProfileResponse;
 import com.sandeep.eventrabackend.exception.InvalidUsernameException;
 import com.sandeep.eventrabackend.exception.UserAlreadyExistsException;
 import com.sandeep.eventrabackend.model.User;
+import com.sandeep.eventrabackend.model.UsernamePolicy;
 import com.sandeep.eventrabackend.repository.UserRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -70,9 +71,11 @@ public class UserService {
             throw new InvalidUsernameException("Username is required");
         }
 
-        String username = User.trimUsername(candidate);
-        if (username.length() < 3 || username.length() > 50) {
-            throw new InvalidUsernameException("Username must be between 3 and 50 characters");
+        String username;
+        try {
+            username = UsernamePolicy.canonicalize(candidate);
+        } catch (IllegalArgumentException ex) {
+            throw new InvalidUsernameException(ex.getMessage());
         }
 
         return username;
