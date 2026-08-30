@@ -43,6 +43,13 @@ public class GlobalExceptionHandler {
         return buildError(HttpStatus.BAD_REQUEST, "Validation Error", message, request);
     }
 
+    @ExceptionHandler(InvalidUsernameException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidUsername(
+            InvalidUsernameException ex,
+            HttpServletRequest request) {
+        return buildError(HttpStatus.BAD_REQUEST, "Validation Error", ex.getMessage(), request);
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleBadCredentials(
             BadCredentialsException ex,

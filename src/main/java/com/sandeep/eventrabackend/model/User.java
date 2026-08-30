@@ -9,7 +9,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
-
 @Data
 @Builder
 @NoArgsConstructor
@@ -38,6 +37,9 @@ public class User {
     @Column(nullable = false, unique = true, length = 50)
     private String username;
 
+    @Column(name = "username_normalized", length = 50)
+    private String usernameNormalized;
+
     @Column(nullable = false)
     private String password;
 
@@ -52,4 +54,23 @@ public class User {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @PrePersist
+    @PreUpdate
+    void normalizeUsername() {
+        username = UsernamePolicy.canonicalize(username);
+        usernameNormalized = normalizeUsernameKey(username);
+    }
+
+    /**
+     * Applies the username boundary-whitespace contract. String.trim removes
+     * every leading and trailing UTF-16 code unit from U+0000 through U+0020.
+     */
+    public static String trimUsername(String username) {
+        return UsernamePolicy.trim(username);
+    }
+
+    public static String normalizeUsernameKey(String username) {
+        return UsernamePolicy.normalizeKey(username);
+    }
 }

@@ -7,17 +7,23 @@ import com.sandeep.eventrabackend.model.User;
 import com.sandeep.eventrabackend.repository.HackathonRegistrationRepository;
 import com.sandeep.eventrabackend.repository.NotificationRepository;
 import com.sandeep.eventrabackend.repository.UserRepository;
+import com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.MigratedUsername;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.migrate;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -46,6 +52,9 @@ public class UserProfileUpdateTests {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
@@ -133,12 +142,12 @@ public class UserProfileUpdateTests {
     }
 
     @Test
-    @DisplayName("PUT /api/users/profile - Duplicate Username")
-    void testUpdateUserProfile_DuplicateUsername() throws Exception {
+    @DisplayName("PUT /api/users/profile rejects a case-insensitive conflict without partial updates")
+    void updateUserProfile_caseInsensitiveDuplicate_rollsBackEveryProfileField() throws Exception {
         UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()
-                .firstName("John")
-                .lastName("Doe")
-                .username("janesmith") // already used by jane@example.com
+                .firstName("Changed")
+                .lastName("Name")
+                .username("  JANESMITH  ")
                 .build();
 
         mockMvc.perform(put("/api/users/profile")
@@ -146,10 +155,104 @@ public class UserProfileUpdateTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("Username already exists: janesmith"));
+                .andExpect(jsonPath("$.message").value("Username is already in use"));
 
         User user = userRepository.findByEmail("john@example.com").orElseThrow();
+        assertEquals("John", user.getFirstName());
+        assertEquals("Doe", user.getLastName());
         assertEquals("johndoe", user.getUsername());
+    }
+
+    @Test
+    @DisplayName("PUT profile rejects a migrated control-whitespace username without partial updates")
+    void updateUserProfile_migratedControlWhitespaceDuplicate_rollsBackEveryProfileField() throws Exception {
+        MigratedUsername migrated = migrate("\t\u001f JaneSmith \r\n");
+        seedLegacyUsername("jane@example.com", migrated);
+        UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()
+                .firstName("Changed")
+                .lastName("Name")
+                .username("\tJANESMITH\t")
+                .build();
+
+        mockMvc.perform(put("/api/users/profile")
+                        .with(user("john@example.com"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Username is already in use"));
+
+        User user = userRepository.findByEmail("john@example.com").orElseThrow();
+        assertEquals("John", user.getFirstName());
+        assertEquals("Doe", user.getLastName());
+        assertEquals("johndoe", user.getUsername());
+    }
+
+    @Test
+    @DisplayName("PUT /api/users/profile trims the username before saving")
+    void updateUserProfile_usernameHasSurroundingWhitespace_savesTrimmedUsername() throws Exception {
+        UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()
+                .firstName("Johnny")
+                .lastName("Doe")
+                .username("  JohnnyNew  ")
+                .build();
+
+        mockMvc.perform(put("/api/users/profile")
+                        .with(user("john@example.com"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("JohnnyNew"));
+
+        User user = userRepository.findByEmail("john@example.com").orElseThrow();
+        assertEquals("JohnnyNew", user.getUsername());
+    }
+
+    @Test
+    @DisplayName("PUT /api/users/profile validates the trimmed 50-character username")
+    void updateUserProfile_trimmedUsernameAtMaximumLength_succeeds() throws Exception {
+        String username = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwx";
+        UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()
+                .firstName("Johnny")
+                .lastName("Doe")
+                .username("  " + username + "  ")
+                .build();
+
+        mockMvc.perform(put("/api/users/profile")
+                        .with(user("john@example.com"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value(username));
+    }
+
+    @ParameterizedTest(name = "invalid username [{0}] returns 400 without changing the profile")
+    @ValueSource(strings = {
+            "İXX",
+            "user-name",
+            "user.name",
+            "user name",
+            "user!",
+            "\u2003user\u2003"
+    })
+    void updateUserProfile_invalidAsciiUsername_returnsBadRequestWithoutPartialSave(
+            String username
+    ) throws Exception {
+        UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()
+                .firstName("Changed")
+                .lastName("Profile")
+                .username(username)
+                .build();
+
+        mockMvc.perform(put("/api/users/profile")
+                        .with(user("john@example.com"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+
+        User persisted = userRepository.findByEmail("john@example.com").orElseThrow();
+        assertThat(persisted.getFirstName()).isEqualTo("John");
+        assertThat(persisted.getLastName()).isEqualTo("Doe");
+        assertThat(persisted.getUsername()).isEqualTo("johndoe");
     }
 
     @Test
@@ -184,5 +287,13 @@ public class UserProfileUpdateTests {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Validation Error"));
+    }
+
+    private void seedLegacyUsername(String email, MigratedUsername migrated) {
+        jdbcTemplate.update(
+                "update users set username = ?, username_normalized = ? where email = ?",
+                migrated.username(),
+                migrated.normalizedUsername(),
+                email);
     }
 }

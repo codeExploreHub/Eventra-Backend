@@ -33,10 +33,17 @@ spring:
     password:
 
   jpa:
+    defer-datasource-initialization: true
     hibernate:
       ddl-auto: update
 
     database-platform: org.hibernate.dialect.H2Dialect
+
+  sql:
+    init:
+      # V3 is run by UsernameMigrationInitializer so PostgreSQL instances
+      # serialize repeatable startup execution with a transaction-scoped lock.
+      mode: never
 
   mail:
     host: smtp.gmail.com
