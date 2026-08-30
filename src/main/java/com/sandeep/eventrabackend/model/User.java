@@ -60,11 +60,19 @@ public class User {
     @PrePersist
     @PreUpdate
     void normalizeUsername() {
-        username = username.trim();
+        username = trimUsername(username);
         usernameNormalized = normalizeUsernameKey(username);
     }
 
+    /**
+     * Applies the username boundary-whitespace contract. String.trim removes
+     * every leading and trailing UTF-16 code unit from U+0000 through U+0020.
+     */
+    public static String trimUsername(String username) {
+        return username.trim();
+    }
+
     public static String normalizeUsernameKey(String username) {
-        return username.trim().toLowerCase(Locale.ROOT);
+        return trimUsername(username).toLowerCase(Locale.ROOT);
     }
 }

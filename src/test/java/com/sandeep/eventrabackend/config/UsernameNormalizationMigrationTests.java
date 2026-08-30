@@ -17,9 +17,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class UsernameNormalizationMigrationTests {
 
     @Test
-    @DisplayName("V3 trims legacy usernames while backfilling normalized uniqueness")
-    void migrate_legacyWhitespaceUsername_backfillsAndEnforcesNormalizedUniqueness() {
-        DataSource dataSource = populatedUsersDatabase(" Alice ", "Bob");
+    @DisplayName("V3 applies Java trim semantics to legacy usernames before enforcing uniqueness")
+    void migrate_legacyControlWhitespaceUsername_backfillsAndEnforcesNormalizedUniqueness() {
+        DataSource dataSource = populatedUsersDatabase("\t\u001f Alice \r\n", "Bob");
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
 
         runMigration(dataSource);

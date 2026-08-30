@@ -5,6 +5,7 @@ import com.sandeep.eventrabackend.model.User;
 import com.sandeep.eventrabackend.repository.HackathonRegistrationRepository;
 import com.sandeep.eventrabackend.repository.NotificationRepository;
 import com.sandeep.eventrabackend.repository.UserRepository;
+import com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.MigratedUsername;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.migrate;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -94,13 +96,14 @@ class UsernameAvailabilityTests {
     }
 
     @Test
-    @DisplayName("GET username availability uses the migrated normalized key for a legacy username")
-    void usernameAvailability_otherUsersLegacyWhitespaceUsername_returnsUnavailable() throws Exception {
-        seedLegacyUsername("jane@example.com", " JaneSmith ", "janesmith");
+    @DisplayName("GET username availability uses V3's key for a tab/control-surrounded legacy username")
+    void usernameAvailability_otherUsersMigratedControlWhitespaceUsername_returnsUnavailable() throws Exception {
+        MigratedUsername migrated = migrate("\t\u001f JaneSmith \r\n");
+        seedLegacyUsername("jane@example.com", migrated.username(), migrated.normalizedUsername());
 
         mockMvc.perform(get("/api/users/username-availability")
                         .with(user("john@example.com"))
-                        .queryParam("username", "  JANESMITH  "))
+                        .queryParam("username", "\tJANESMITH\t"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("JANESMITH"))
                 .andExpect(jsonPath("$.available").value(false));
@@ -118,13 +121,14 @@ class UsernameAvailabilityTests {
     }
 
     @Test
-    @DisplayName("GET username availability excludes the current user's migrated normalized key")
-    void usernameAvailability_ownLegacyWhitespaceUsername_returnsAvailable() throws Exception {
-        seedLegacyUsername("john@example.com", " JohnDoe ", "johndoe");
+    @DisplayName("GET username availability self-excludes a migrated control-whitespace username")
+    void usernameAvailability_ownMigratedControlWhitespaceUsername_returnsAvailable() throws Exception {
+        MigratedUsername migrated = migrate("\t\u001f JohnDoe \r\n");
+        seedLegacyUsername("john@example.com", migrated.username(), migrated.normalizedUsername());
 
         mockMvc.perform(get("/api/users/username-availability")
                         .with(user("john@example.com"))
-                        .queryParam("username", "  JOHNDOE  "))
+                        .queryParam("username", "\tJOHNDOE\t"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("JOHNDOE"))
                 .andExpect(jsonPath("$.available").value(true));

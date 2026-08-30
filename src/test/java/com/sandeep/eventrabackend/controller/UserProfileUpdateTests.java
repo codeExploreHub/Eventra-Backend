@@ -7,6 +7,7 @@ import com.sandeep.eventrabackend.model.User;
 import com.sandeep.eventrabackend.repository.HackathonRegistrationRepository;
 import com.sandeep.eventrabackend.repository.NotificationRepository;
 import com.sandeep.eventrabackend.repository.UserRepository;
+import com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.MigratedUsername;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.migrate;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -159,17 +161,14 @@ public class UserProfileUpdateTests {
     }
 
     @Test
-    @DisplayName("PUT profile rejects a migrated legacy whitespace username without partial updates")
-    void updateUserProfile_legacyWhitespaceDuplicate_rollsBackEveryProfileField() throws Exception {
-        jdbcTemplate.update(
-                "update users set username = ?, username_normalized = ? where email = ?",
-                " JaneSmith ",
-                "janesmith",
-                "jane@example.com");
+    @DisplayName("PUT profile rejects a migrated control-whitespace username without partial updates")
+    void updateUserProfile_migratedControlWhitespaceDuplicate_rollsBackEveryProfileField() throws Exception {
+        MigratedUsername migrated = migrate("\t\u001f JaneSmith \r\n");
+        seedLegacyUsername("jane@example.com", migrated);
         UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()
                 .firstName("Changed")
                 .lastName("Name")
-                .username("JANESMITH")
+                .username("\tJANESMITH\t")
                 .build();
 
         mockMvc.perform(put("/api/users/profile")
@@ -255,5 +254,13 @@ public class UserProfileUpdateTests {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Validation Error"));
+    }
+
+    private void seedLegacyUsername(String email, MigratedUsername migrated) {
+        jdbcTemplate.update(
+                "update users set username = ?, username_normalized = ? where email = ?",
+                migrated.username(),
+                migrated.normalizedUsername(),
+                email);
     }
 }

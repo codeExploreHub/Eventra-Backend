@@ -70,7 +70,7 @@ public class UserService {
             throw new InvalidUsernameException("Username is required");
         }
 
-        String username = candidate.trim();
+        String username = User.trimUsername(candidate);
         if (username.length() < 3 || username.length() > 50) {
             throw new InvalidUsernameException("Username must be between 3 and 50 characters");
         }

@@ -10,6 +10,7 @@ import com.sandeep.eventrabackend.repository.FeedbackAnalyticsRepository;
 import com.sandeep.eventrabackend.repository.HackathonRegistrationRepository;
 import com.sandeep.eventrabackend.repository.NotificationRepository;
 import com.sandeep.eventrabackend.repository.UserRepository;
+import com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.MigratedUsername;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static com.sandeep.eventrabackend.support.LegacyUsernameMigrationFixture.migrate;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -97,12 +99,13 @@ class AuthUsernameGenerationTests {
     }
 
     @Test
-    @DisplayName("Signup uses the migrated normalized key when generating a username")
-    void signup_baseUsernameMatchesLegacyWhitespaceUsername_generatesNextAvailableUsername() throws Exception {
+    @DisplayName("Signup uses V3's key for a control-whitespace legacy username")
+    void signup_baseUsernameMatchesMigratedControlWhitespaceUsername_generatesNextAvailableUsername() throws Exception {
+        MigratedUsername migrated = migrate("\t\u001f MixedCase \r\n");
         jdbcTemplate.update(
                 "update users set username = ?, username_normalized = ? where email = ?",
-                " MixedCase ",
-                "mixedcase",
+                migrated.username(),
+                migrated.normalizedUsername(),
                 "existing@example.com");
         SignupRequest request = new SignupRequest();
         request.setFirstName("New");
