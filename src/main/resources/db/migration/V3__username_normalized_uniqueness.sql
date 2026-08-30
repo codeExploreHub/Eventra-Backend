@@ -9,6 +9,10 @@ SET username = REGEXP_REPLACE(
     ''
 );
 
+ALTER TABLE users DROP CONSTRAINT IF EXISTS ck_users_username_length;
+ALTER TABLE users ADD CONSTRAINT ck_users_username_length
+    CHECK (CHAR_LENGTH(username) BETWEEN 3 AND 50);
+
 -- A named failure identifies invalid historical rows without rewriting them.
 -- The anchored REGEXP_REPLACE predicate is shared by H2 and PostgreSQL and
 -- is deterministic because the accepted alphabet is explicitly ASCII-only.
@@ -28,6 +32,10 @@ SET username_normalized = TRANSLATE(
     'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
     'abcdefghijklmnopqrstuvwxyz'
 );
+
+ALTER TABLE users DROP CONSTRAINT IF EXISTS ck_users_username_normalized_length;
+ALTER TABLE users ADD CONSTRAINT ck_users_username_normalized_length
+    CHECK (CHAR_LENGTH(username_normalized) BETWEEN 3 AND 50);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_users_username_normalized
     ON users (username_normalized);

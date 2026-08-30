@@ -83,6 +83,65 @@ class UsernameNormalizationMigrationTests {
                 .hasMessageContaining("CK_USERS_USERNAME_NORMALIZED_CONSISTENT");
     }
 
+    @ParameterizedTest(name = "V3 rejects direct username shorter than three characters [{0}]")
+    @ValueSource(strings = {"", "a", "aa"})
+    @DisplayName("V3 explicitly constrains direct username writes to at least three characters")
+    void migrate_thenDirectUnderlengthUsernameWrite_isRejectedByLengthConstraint(String username) {
+        DataSource dataSource = populatedUsersDatabase("Alice", "Bob");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        runMigration(dataSource);
+        jdbcTemplate.execute("alter table users drop constraint ck_users_username_ascii");
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "insert into users (id, username, username_normalized) values (3, ?, ?)",
+                username,
+                username))
+                .isInstanceOf(DataAccessException.class)
+                .hasMessageContaining("CK_USERS_USERNAME_LENGTH");
+    }
+
+    @ParameterizedTest(name = "V3 rejects direct normalized username shorter than three characters [{0}]")
+    @ValueSource(strings = {"", "a", "aa"})
+    @DisplayName("V3 explicitly constrains direct normalized username writes to at least three characters")
+    void migrate_thenDirectUnderlengthNormalizedUsernameWrite_isRejectedByLengthConstraint(
+            String normalizedUsername) {
+        DataSource dataSource = populatedUsersDatabase("Alice", "Bob");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        runMigration(dataSource);
+        jdbcTemplate.execute("alter table users drop constraint ck_users_username_normalized_consistent");
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "insert into users (id, username, username_normalized) values (3, 'Abc', ?)",
+                normalizedUsername))
+                .isInstanceOf(DataAccessException.class)
+                .hasMessageContaining("CK_USERS_USERNAME_NORMALIZED_LENGTH");
+    }
+
+    @Test
+    @DisplayName("V3 accepts direct username writes at the three and fifty character boundaries")
+    void migrate_thenDirectBoundaryUsernameWrites_areAccepted() {
+        DataSource dataSource = populatedUsersDatabase("Alice", "Bob");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        runMigration(dataSource);
+
+        assertThat(jdbcTemplate.update(
+                "insert into users (id, username, username_normalized) values (3, 'Abc', 'abc')"))
+                .isEqualTo(1);
+        assertThat(jdbcTemplate.update(
+                "insert into users (id, username, username_normalized) values (4, ?, ?)",
+                "A".repeat(50),
+                "a".repeat(50)))
+                .isEqualTo(1);
+        assertThat(jdbcTemplate.queryForList(
+                "select character_length(username) from users where id in (3, 4) order by id",
+                Integer.class))
+                .containsExactly(3, 50);
+        assertThat(jdbcTemplate.queryForList(
+                "select character_length(username_normalized) from users where id in (3, 4) order by id",
+                Integer.class))
+                .containsExactly(3, 50);
+    }
+
     @Test
     @DisplayName("V3 can run twice without weakening username constraints")
     void migrate_secondStartup_remainsSafeAndIdempotent() {
@@ -114,6 +173,24 @@ class UsernameNormalizationMigrationTests {
     void initialize_invalidLegacyUsername_failsWithoutRewritingRows() {
         DataSource dataSource = populatedUsersDatabaseWithNormalizedColumn(
                 "\tbad-name\t",
+                "ValidUser");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        var rowsBeforeMigration = legacyUsernameState(jdbcTemplate);
+
+        Throwable failure = catchThrowable(() -> runInitializerMigration(dataSource));
+
+        assertThat(legacyUsernameState(jdbcTemplate)).isEqualTo(rowsBeforeMigration);
+        assertThat(failure)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("invalid legacy username")
+                .hasMessageContaining("id 1");
+    }
+
+    @Test
+    @DisplayName("H2 startup preserves whitespace-only legacy rows when migration fails")
+    void initialize_whitespaceOnlyLegacyUsername_failsWithoutRewritingRows() {
+        DataSource dataSource = populatedUsersDatabaseWithNormalizedColumn(
+                "\u0000\t\u001f\u0020",
                 "ValidUser");
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
         var rowsBeforeMigration = legacyUsernameState(jdbcTemplate);

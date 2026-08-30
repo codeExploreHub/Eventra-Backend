@@ -121,6 +121,49 @@ assert_failed_with "ck_users_username_normalized_consistent" \
   "${psql_command[@]}" -q -c \
   "INSERT INTO users (id, username, username_normalized) VALUES (4, 'Charlie', 'wrong')"
 
+# Isolate the username length invariant from the ASCII invariant.
+"${psql_command[@]}" -q -c \
+  "ALTER TABLE users DROP CONSTRAINT ck_users_username_ascii"
+for underlength in 0 1 2; do
+  assert_failed_with "ck_users_username_length" \
+    "${psql_command[@]}" -q -c \
+    "INSERT INTO users (id, username, username_normalized)
+     VALUES (5, repeat('a', ${underlength}), repeat('a', ${underlength}))"
+done
+
+"${psql_command[@]}" -q -c \
+  "INSERT INTO users (id, username, username_normalized) VALUES
+    (6, 'Abc', 'abc'),
+    (7, repeat('A', 50), repeat('a', 50));"
+boundary_lengths="$("${psql_command[@]}" -At -c \
+  "SELECT character_length(username) || '|' || character_length(username_normalized)
+   FROM users WHERE id IN (6, 7) ORDER BY id")"
+if [[ "${boundary_lengths}" != $'3|3\n50|50' ]]; then
+  echo "PostgreSQL rejected or altered a valid username length boundary" >&2
+  exit 1
+fi
+
+# Isolate the normalized-key length invariant from the consistency invariant.
+"${psql_command[@]}" -q -c \
+  "ALTER TABLE users DROP CONSTRAINT ck_users_username_normalized_consistent"
+for underlength in 0 1 2; do
+  assert_failed_with "ck_users_username_normalized_length" \
+    "${psql_command[@]}" -q -c \
+    "INSERT INTO users (id, username, username_normalized)
+     VALUES (8, 'Def', repeat('a', ${underlength}))"
+done
+
+reset_users_table
+"${psql_command[@]}" -q -c \
+  "INSERT INTO users (id, username) VALUES (1, chr(9) || chr(31) || chr(32))"
+assert_failed_with "ck_users_username_length" apply_migration
+whitespace_only_legacy_hex="$("${psql_command[@]}" -At -c \
+  "SELECT encode(convert_to(username, 'UTF8'), 'hex') FROM users WHERE id = 1")"
+if [[ "${whitespace_only_legacy_hex}" != "091f20" ]]; then
+  echo "PostgreSQL migration rewrote a whitespace-only legacy username before failing" >&2
+  exit 1
+fi
+
 reset_users_table
 "${psql_command[@]}" -q -c \
   "INSERT INTO users (id, username) VALUES (1, chr(304) || 'XX'), (2, 'ValidUser')"
