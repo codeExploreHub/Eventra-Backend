@@ -1,0 +1,90 @@
+schema_version: 1
+entries:
+  - knowledge_id: backend-repository-map
+    title: Backend repository map
+    purpose: Route backend work to authoritative code, tests, scripts, and knowledge.
+    relative_path: docs/agent-knowledge/repository-map.md
+    scope: backend
+    repositories: [backend]
+    repository_paths: ["**"]
+    task_types: [planning, implementation, qa, review, integration]
+    status: active
+    replacement_id: null
+    provenance:
+      kind: bootstrap_design
+      design_path: docs/superpowers/specs/2026-08-31-eventra-repository-knowledge-loop-design.md
+      design_commit: 32a150dfa
+    last_verified_sha: 74b296be508fb6347c9cfaed83adf7bff7a05ead
+    last_verified_date: "2026-08-31"
+    content_digest: db62014d629f567776ef9439ce3b2b02cb7b6bd8b0b018220c84f815c152fdec
+  - knowledge_id: backend-architecture
+    title: Backend architecture
+    purpose: Preserve Java, Spring, service, and API contract boundaries.
+    relative_path: docs/agent-knowledge/architecture.md
+    scope: backend
+    repositories: [backend]
+    repository_paths: ["src/**", "pom.xml"]
+    task_types: [planning, implementation, qa, review, integration]
+    status: active
+    replacement_id: null
+    provenance:
+      kind: bootstrap_design
+      design_path: docs/superpowers/specs/2026-08-31-eventra-repository-knowledge-loop-design.md
+      design_commit: 32a150dfa
+    last_verified_sha: 74b296be508fb6347c9cfaed83adf7bff7a05ead
+    last_verified_date: "2026-08-31"
+    content_digest: f683ada947321689a3d16a4f7abca0df8a0c091fb6ddd920108e363b6f3f9bc2
+  - knowledge_id: backend-invariants
+    title: Backend invariants
+    purpose: Apply API, dependency, security, testing, and evidence gates.
+    relative_path: docs/agent-knowledge/invariants.md
+    scope: backend
+    repositories: [backend]
+    repository_paths: ["**"]
+    task_types: [planning, implementation, repair, qa, review, integration]
+    status: active
+    replacement_id: null
+    provenance:
+      kind: delivery_evidence
+      source_issue: PRO-113
+      source_comment_uuid: 01a05d61-3787-7f19-b1c8-e02d8a6d35a5
+      source_candidate_shas:
+        backend: 24c0352010ddd3188d8c2b37ac8677432d865578
+      source_candidate_digest: 5915b522c32411f43402be6bfc6e28f1bed73667c7efdd21bfe09a9b1828d145
+    last_verified_sha: 24c0352010ddd3188d8c2b37ac8677432d865578
+    last_verified_date: "2026-09-01"
+    content_digest: 83107fd092e386d6759235575d476bc9ec4fcc97b85a4179365d63c6fbb53660
+  - knowledge_id: backend-known-pitfalls
+    title: Backend known pitfalls
+    purpose: Avoid repeated Maven, secret, and local env-file failures.
+    relative_path: docs/agent-knowledge/known-pitfalls.md
+    scope: backend
+    repositories: [backend]
+    repository_paths: ["**"]
+    task_types: [implementation, qa, review, integration]
+    status: active
+    replacement_id: null
+    provenance:
+      kind: bootstrap_design
+      design_path: docs/superpowers/specs/2026-08-31-eventra-repository-knowledge-loop-design.md
+      design_commit: 32a150dfa
+    last_verified_sha: 74b296be508fb6347c9cfaed83adf7bff7a05ead
+    last_verified_date: "2026-08-31"
+    content_digest: 8cedc1226a701bb9d404defce18db72b773cb216a82837126fb3d8e6603309c0
+  - knowledge_id: backend-testing-guide
+    title: Backend testing guide
+    purpose: Select supported local commands and produce redacted exact evidence.
+    relative_path: docs/agent-knowledge/testing-guide.md
+    scope: backend
+    repositories: [backend]
+    repository_paths: ["**"]
+    task_types: [implementation, qa, review, integration]
+    status: active
+    replacement_id: null
+    provenance:
+      kind: bootstrap_design
+      design_path: docs/superpowers/specs/2026-08-31-eventra-repository-knowledge-loop-design.md
+      design_commit: 32a150dfa
+    last_verified_sha: 74b296be508fb6347c9cfaed83adf7bff7a05ead
+    last_verified_date: "2026-08-31"
+    content_digest: 394862c961e9db4859d205f78eb9452b92947cc011b766e22b2eca08269c67fb
