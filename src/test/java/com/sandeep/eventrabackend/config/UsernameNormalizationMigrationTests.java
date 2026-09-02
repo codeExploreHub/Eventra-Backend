@@ -15,6 +15,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
 import javax.sql.DataSource;
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -183,7 +184,7 @@ class UsernameNormalizationMigrationTests {
         assertThat(failure)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("invalid legacy username")
-                .hasMessageContaining("id 1");
+                .hasMessageContaining("ids [1]");
     }
 
     @Test
@@ -201,7 +202,7 @@ class UsernameNormalizationMigrationTests {
         assertThat(failure)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("invalid legacy username")
-                .hasMessageContaining("id 1");
+                .hasMessageContaining("ids [1]");
     }
 
     @Test
@@ -219,7 +220,81 @@ class UsernameNormalizationMigrationTests {
         assertThat(failure)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("normalized username collision")
-                .hasMessageContaining("ids 1 and 2");
+                .hasMessageContaining("id groups [[1, 2]]");
+    }
+
+    @Test
+    @DisplayName("H2 startup reports every invalid legacy username by ID without rewriting rows")
+    void initialize_multipleInvalidLegacyUsernames_reportsAllIdsWithoutRewritingRows() {
+        DataSource dataSource = populatedUsersDatabaseWithNormalizedRows(
+                new LegacyUserRow(8, "ValidUser", "stale-eight"),
+                new LegacyUserRow(5, "bad.name", "stale-five"),
+                new LegacyUserRow(2, "bad-name", "stale-two"));
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        var rowsBeforeMigration = legacyUsernameState(jdbcTemplate);
+
+        Throwable failure = catchThrowable(() -> runInitializerMigration(dataSource));
+
+        assertThat(legacyUsernameState(jdbcTemplate)).isEqualTo(rowsBeforeMigration);
+        assertThat(failure)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("H2 username migration preflight failed: invalid legacy username ids [2, 5]");
+        assertThat(diagnosticMessages(failure))
+                .doesNotContain("bad.name", "bad-name", "stale-eight", "stale-five", "stale-two");
+    }
+
+    @Test
+    @DisplayName("H2 startup reports every normalized collision group in deterministic ID order")
+    void initialize_multipleNormalizedCollisionGroups_reportsAllIdsWithoutRewritingRows() {
+        DataSource dataSource = populatedUsersDatabaseWithNormalizedRows(
+                new LegacyUserRow(7, "ALICE", "stale-seven"),
+                new LegacyUserRow(5, " BOB ", "stale-five"),
+                new LegacyUserRow(4, "Alice", "stale-four"),
+                new LegacyUserRow(2, "bob", "stale-two"),
+                new LegacyUserRow(1, " alice ", "stale-one"));
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        var rowsBeforeMigration = legacyUsernameState(jdbcTemplate);
+
+        Throwable failure = catchThrowable(() -> runInitializerMigration(dataSource));
+
+        assertThat(legacyUsernameState(jdbcTemplate)).isEqualTo(rowsBeforeMigration);
+        assertThat(failure)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("H2 username migration preflight failed: "
+                        + "normalized username collision id groups [[1, 4, 7], [2, 5]]");
+        assertThat(diagnosticMessages(failure))
+                .doesNotContain(
+                        "ALICE", "Alice", "alice", "BOB", "bob",
+                        "stale-seven", "stale-five", "stale-four", "stale-two", "stale-one");
+    }
+
+    @Test
+    @DisplayName("H2 startup reports mixed invalid and collision problems before rewriting any row")
+    void initialize_mixedPreflightProblems_reportsAllIdsDeterministicallyAndRedactsValues() {
+        DataSource dataSource = populatedUsersDatabaseWithNormalizedRows(
+                new LegacyUserRow(9, " BOB ", "stale-nine"),
+                new LegacyUserRow(8, "carol", "stale-eight"),
+                new LegacyUserRow(7, " alice ", "stale-seven"),
+                new LegacyUserRow(6, "BOB", "stale-six"),
+                new LegacyUserRow(5, "bad.name", "stale-five"),
+                new LegacyUserRow(4, "bad-name", "stale-four"),
+                new LegacyUserRow(3, "Carol", "stale-three"),
+                new LegacyUserRow(2, "Alice", "stale-two"));
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        var rowsBeforeMigration = legacyUsernameState(jdbcTemplate);
+
+        Throwable failure = catchThrowable(() -> runInitializerMigration(dataSource));
+
+        assertThat(legacyUsernameState(jdbcTemplate)).isEqualTo(rowsBeforeMigration);
+        assertThat(failure)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("H2 username migration preflight failed: invalid legacy username ids [4, 5]; "
+                        + "normalized username collision id groups [[2, 7], [3, 8], [6, 9]]");
+        assertThat(diagnosticMessages(failure))
+                .doesNotContain(
+                        "bad.name", "bad-name", "Alice", "alice", "Carol", "carol", "BOB",
+                        "stale-nine", "stale-eight", "stale-seven", "stale-six", "stale-five",
+                        "stale-four", "stale-three", "stale-two");
     }
 
     @Test
@@ -281,6 +356,12 @@ class UsernameNormalizationMigrationTests {
     private DataSource populatedUsersDatabaseWithNormalizedColumn(
             String firstUsername,
             String secondUsername) {
+        return populatedUsersDatabaseWithNormalizedRows(
+                new LegacyUserRow(1, firstUsername, null),
+                new LegacyUserRow(2, secondUsername, null));
+    }
+
+    private DataSource populatedUsersDatabaseWithNormalizedRows(LegacyUserRow... rows) {
         DataSource dataSource = new EmbeddedDatabaseBuilder()
                 .generateUniqueName(true)
                 .setType(EmbeddedDatabaseType.H2)
@@ -293,17 +374,29 @@ class UsernameNormalizationMigrationTests {
                     username_normalized varchar(50)
                 )
                 """);
-        jdbcTemplate.update("insert into users (id, username) values (1, ?)", firstUsername);
-        jdbcTemplate.update("insert into users (id, username) values (2, ?)", secondUsername);
+        Arrays.stream(rows).forEach(row -> jdbcTemplate.update(
+                "insert into users (id, username, username_normalized) values (?, ?, ?)",
+                row.id(),
+                row.username(),
+                row.normalizedUsername()));
         return dataSource;
     }
 
     private java.util.List<LegacyUsernameState> legacyUsernameState(JdbcTemplate jdbcTemplate) {
         return jdbcTemplate.query(
-                "select username, username_normalized from users order by id",
+                "select id, username, username_normalized from users order by id",
                 (resultSet, rowNumber) -> new LegacyUsernameState(
+                        resultSet.getLong("id"),
                         resultSet.getString("username"),
                         resultSet.getString("username_normalized")));
+    }
+
+    private String diagnosticMessages(Throwable failure) {
+        StringBuilder messages = new StringBuilder();
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            messages.append(current.getMessage()).append('\n');
+        }
+        return messages.toString();
     }
 
     private void runInitializerMigration(DataSource dataSource) {
@@ -321,6 +414,9 @@ class UsernameNormalizationMigrationTests {
                 .execute(dataSource);
     }
 
-    private record LegacyUsernameState(String username, String normalizedUsername) {
+    private record LegacyUserRow(long id, String username, String normalizedUsername) {
+    }
+
+    private record LegacyUsernameState(long id, String username, String normalizedUsername) {
     }
 }

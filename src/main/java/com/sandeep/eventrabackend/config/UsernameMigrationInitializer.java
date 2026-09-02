@@ -16,7 +16,10 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -89,7 +92,8 @@ public class UsernameMigrationInitializer implements SmartInitializingSingleton 
     }
 
     private void validateH2LegacyUsernames(Connection connection) throws SQLException {
-        Map<String, Long> idsByNormalizedUsername = new HashMap<>();
+        List<Long> invalidIds = new ArrayList<>();
+        Map<String, List<Long>> idsByNormalizedUsername = new HashMap<>();
         try (Statement statement = connection.createStatement();
              ResultSet rows = statement.executeQuery("SELECT id, username FROM users ORDER BY id")) {
             while (rows.next()) {
@@ -98,18 +102,33 @@ public class UsernameMigrationInitializer implements SmartInitializingSingleton 
                 try {
                     normalizedUsername = UsernamePolicy.normalizeKey(rows.getString("username"));
                 } catch (IllegalArgumentException ex) {
-                    throw new IllegalStateException(
-                            "H2 username migration preflight found invalid legacy username at id " + id,
-                            ex);
+                    invalidIds.add(id);
+                    continue;
                 }
 
-                Long conflictingId = idsByNormalizedUsername.putIfAbsent(normalizedUsername, id);
-                if (conflictingId != null) {
-                    throw new IllegalStateException(
-                            "H2 username migration preflight found normalized username collision between ids "
-                                    + conflictingId + " and " + id);
-                }
+                idsByNormalizedUsername
+                        .computeIfAbsent(normalizedUsername, ignored -> new ArrayList<>())
+                        .add(id);
             }
+        }
+
+        invalidIds.sort(Long::compareTo);
+        List<List<Long>> collisionGroups = idsByNormalizedUsername.values().stream()
+                .filter(ids -> ids.size() > 1)
+                .map(ids -> ids.stream().sorted().toList())
+                .sorted(Comparator.comparingLong(ids -> ids.get(0)))
+                .toList();
+
+        List<String> problems = new ArrayList<>(2);
+        if (!invalidIds.isEmpty()) {
+            problems.add("invalid legacy username ids " + invalidIds);
+        }
+        if (!collisionGroups.isEmpty()) {
+            problems.add("normalized username collision id groups " + collisionGroups);
+        }
+        if (!problems.isEmpty()) {
+            throw new IllegalStateException(
+                    "H2 username migration preflight failed: " + String.join("; ", problems));
         }
     }
 }
