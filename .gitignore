@@ -39,3 +39,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Agent runtime artifacts ###
+/.worktrees/
+/.multica/
