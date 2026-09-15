@@ -72,6 +72,17 @@ The backend implements a comprehensive set of modules to handle various platform
     scripts/smoke-local.sh
     ```
 
+    After confirming the service is running, smoke checks use
+    `http://localhost:8080` by default. Set `BACKEND_BASE_URL` to check a
+    different address; a trailing `/` is optional:
+    ```bash
+    BACKEND_BASE_URL=http://localhost:18080/ scripts/smoke-local.sh
+    ```
+    Both health and OpenAPI checks use this address. Health must return a
+    successful HTTP response with top-level JSON `status` equal to `UP`;
+    either check failing exits nonzero. This variable selects the smoke
+    target and does not configure the service's listening port.
+
 ## Environment Variables
 
 | Variable | Required | Description |

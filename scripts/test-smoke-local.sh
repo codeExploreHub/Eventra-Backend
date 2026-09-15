@@ -9,10 +9,10 @@ cat >"$TEST_DIR/curl" <<'FAKE'
 set -euo pipefail
 [[ "$*" == *--fail* ]] || exit 99
 case "${!#}" in
-  http://localhost:8080/actuator/health)
+  "$EXPECTED_BASE_URL/actuator/health")
     cat "$HEALTH_FILE"
     exit "$HEALTH_EXIT" ;;
-  http://localhost:8080/v3/api-docs)
+  "$EXPECTED_BASE_URL/v3/api-docs")
     echo called >"$DOCS_CALL"
     exit "$DOCS_EXIT" ;;
   *) exit 99 ;;
@@ -20,6 +20,8 @@ esac
 FAKE
 chmod +x "$TEST_DIR/curl"
 export PATH="$TEST_DIR:$PATH" DOCS_CALL="$TEST_DIR/docs" HEALTH_FILE="$TEST_DIR/health"
+unset BACKEND_BASE_URL
+export EXPECTED_BASE_URL=http://localhost:8080
 failures=0
 run_case() {
   local name="$1" expected="$2" actual=0
@@ -50,7 +52,14 @@ run_case() {
   fi
 }
 run_binary_case() { run_case "$1" "$2" "$3" 0 0 binary; }
-run_case up pass '{"status":"UP"}'
+run_case default_address pass '{"status":"UP"}'
+export BACKEND_BASE_URL=http://127.0.0.1:18080
+export EXPECTED_BASE_URL=http://127.0.0.1:18080
+run_case custom_port pass '{"status":"UP"}'
+export BACKEND_BASE_URL=http://127.0.0.1:18080/
+run_case trailing_slash pass '{"status":"UP"}'
+unset BACKEND_BASE_URL
+export EXPECTED_BASE_URL=http://localhost:8080
 run_case down fail '{"status":"DOWN"}'
 run_case out_of_service fail '{"status":"OUT_OF_SERVICE"}'
 run_case unknown fail '{"status":"UNKNOWN"}'
